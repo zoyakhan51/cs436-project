@@ -20,7 +20,7 @@ This repository reconstructs a sparse 3D point cloud from multiple images (n = 6
 - Estimate camera pose using PnP + RANSAC  
 - Triangulate new point tracks  
 - Expand the global 3D map  
-- (Optional) Run Bundle Adjustment for refinement  
+- Bundle Adjustment for refinement  
 
 
 ## Code Organization
