@@ -40,10 +40,9 @@ The repository is organized into modular Python files:
 ## Set up
 
 ### Install Required Packages
-Ensure you have Python 3.8+ installed. Then install the dependencies:
+Ensure you have Python 3.8+ installed. Then install the dependencies. After installing the dependencies, simply run the files for each phase:
 
 ```bash
 pip install opencv-python numpy matplotlib
 
-After installing the dependencies, simply run the files for each phase.
 
