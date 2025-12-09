@@ -1,0 +1,1344 @@
+<!-- NOTE: significant parts of this drafted with the assistance of AI :( ) -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS436 Virtual Tour - 3D Scene Reconstruction</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            background: #0a0a0f;
+            color: #fff;
+        }
+
+        /* ========== MAIN CONTAINER ========== */
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* ========== IMAGE OVERLAYS FOR CROSS-FADE ========== */
+        .image-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            pointer-events: none;
+            z-index: 2;
+            opacity: 0;
+            transition: opacity 0.05s linear;
+        }
+
+        /* ========== LOADING SCREEN ========== */
+        #loading {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            transition: opacity 0.5s ease;
+        }
+
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loader {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(79, 195, 247, 0.2);
+            border-top-color: #4fc3f7;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 24px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #loading h1 {
+            font-size: 24px;
+            font-weight: 300;
+            margin-bottom: 8px;
+            letter-spacing: 2px;
+        }
+
+        #loading-text {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        #loading-progress {
+            width: 200px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            margin-top: 16px;
+            overflow: hidden;
+        }
+
+        #loading-bar {
+            height: 100%;
+            width: 0%;
+            background: #4fc3f7;
+            transition: width 0.3s ease;
+        }
+
+        /* ========== INFO PANEL ========== */
+        #info-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 18px 22px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            z-index: 100;
+            min-width: 220px;
+        }
+
+        #info-panel h2 {
+            font-size: 15px;
+            font-weight: 600;
+            color: #4fc3f7;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            font-size: 13px;
+        }
+
+        .stat-label {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .stat-value {
+            color: #fff;
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ========== CONTROL PANEL ========== */
+        #control-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 18px 22px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            z-index: 100;
+            width: 200px;
+        }
+
+        #control-panel h3 {
+            font-size: 12px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.4);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 14px;
+        }
+
+        .control-row {
+            margin-bottom: 14px;
+        }
+
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-row label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 6px;
+        }
+
+        .control-row label span {
+            color: #4fc3f7;
+            font-weight: 500;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #4fc3f7;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.15s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .toggle-btn {
+            width: 100%;
+            padding: 10px 14px;
+            margin-top: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(255, 255, 255, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            text-align: left;
+        }
+
+        .toggle-btn:hover {
+            background: rgba(79, 195, 247, 0.15);
+            border-color: rgba(79, 195, 247, 0.3);
+        }
+
+        .toggle-btn.active {
+            background: rgba(79, 195, 247, 0.25);
+            border-color: #4fc3f7;
+            color: #fff;
+        }
+
+        .toggle-btn::before {
+            content: '○';
+            margin-right: 8px;
+            opacity: 0.5;
+        }
+
+        .toggle-btn.active::before {
+            content: '●';
+            opacity: 1;
+            color: #4fc3f7;
+        }
+
+        /* ========== NAVIGATION ========== */
+        #navigation {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .nav-btn {
+            padding: 14px 28px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 30px;
+            transition: all 0.2s ease;
+        }
+
+        .nav-btn:hover:not(:disabled) {
+            background: rgba(79, 195, 247, 0.25);
+            border-color: #4fc3f7;
+            transform: translateY(-2px);
+        }
+
+        .nav-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        #camera-indicator {
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            border: 2px solid #4fc3f7;
+            font-variant-numeric: tabular-nums;
+            min-width: 100px;
+            text-align: center;
+        }
+
+        #camera-indicator .current {
+            color: #4fc3f7;
+        }
+
+        /* ========== CAMERA LABEL ========== */
+        #camera-label {
+            position: fixed;
+            bottom: 95px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.7);
+            z-index: 100;
+        }
+
+        /* ========== KEYBOARD HINTS ========== */
+        #hints {
+            position: fixed;
+            bottom: 140px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 16px;
+            z-index: 100;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        #hints .hint {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        kbd {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 11px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        /* ========== MODE OVERLAY ========== */
+        #mode-overlay {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.9);
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 30px 50px;
+            border-radius: 16px;
+            border: 1px solid rgba(79, 195, 247, 0.3);
+            text-align: center;
+            z-index: 300;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s ease;
+        }
+
+        #mode-overlay.visible {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        #mode-overlay h2 {
+            color: #4fc3f7;
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        #mode-overlay p {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 13px;
+        }
+
+        /* ========== CROSSHAIR (for orbit mode) ========== */
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        #crosshair.visible {
+            opacity: 0.4;
+        }
+
+        #crosshair::before,
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            background: #fff;
+        }
+
+        #crosshair::before {
+            width: 20px;
+            height: 2px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        #crosshair::after {
+            width: 2px;
+            height: 20px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        /* ========== ERROR DISPLAY ========== */
+        #error {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(220, 50, 50, 0.95);
+            padding: 30px 40px;
+            border-radius: 12px;
+            text-align: center;
+            z-index: 3000;
+            max-width: 450px;
+            display: none;
+        }
+
+        #error.visible {
+            display: block;
+        }
+
+        #error h3 {
+            margin-bottom: 12px;
+        }
+
+        #error p {
+            font-size: 14px;
+            line-height: 1.5;
+            opacity: 0.9;
+        }
+
+        /* ========== RESPONSIVE ========== */
+        @media (max-width: 768px) {
+            #info-panel, #control-panel {
+                display: none;
+            }
+            
+            #hints {
+                display: none;
+            }
+            
+            .nav-btn {
+                padding: 12px 20px;
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <!-- Three.js Canvas -->
+        <canvas id="canvas"></canvas>
+        
+        <!-- Image overlays for cross-fade transitions -->
+        <div id="image-current" class="image-overlay"></div>
+        <div id="image-next" class="image-overlay"></div>
+        
+        <!-- Crosshair for orbit mode -->
+        <div id="crosshair"></div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading">
+        <div class="loader"></div>
+        <h1>Virtual Tour</h1>
+        <div id="loading-text">Initializing...</div>
+        <div id="loading-progress">
+            <div id="loading-bar"></div>
+        </div>
+    </div>
+
+    <!-- Info Panel -->
+    <div id="info-panel">
+        <h2>📍 Scene Information</h2>
+        <div class="stat-row">
+            <span class="stat-label">Points</span>
+            <span class="stat-value" id="stat-points">—</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Cameras</span>
+            <span class="stat-value" id="stat-cameras">—</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Mode</span>
+            <span class="stat-value" id="stat-mode">Tour</span>
+        </div>
+    </div>
+
+    <!-- Control Panel -->
+    <div id="control-panel">
+        <h3>Display Settings</h3>
+        
+        <div class="control-row">
+            <label>
+                Point Size
+                <span id="val-point-size">0.010</span>
+            </label>
+            <input type="range" id="ctrl-point-size" min="0.002" max="0.030" step="0.001" value="0.010">
+        </div>
+        
+        <div class="control-row">
+            <label>
+                Transition
+                <span id="val-transition">1.0s</span>
+            </label>
+            <input type="range" id="ctrl-transition" min="0.2" max="2.5" step="0.1" value="1.0">
+        </div>
+        
+        <button class="toggle-btn" id="btn-images">Source Images</button>
+        <button class="toggle-btn" id="btn-markers">Camera Markers</button>
+        <button class="toggle-btn" id="btn-orbit">Free Orbit Mode</button>
+    </div>
+
+    <!-- Camera Label -->
+    <div id="camera-label">Camera: <span id="current-camera-name">—</span></div>
+
+    <!-- Navigation Controls -->
+    <div id="navigation">
+        <button class="nav-btn" id="btn-prev">← Previous</button>
+        <div id="camera-indicator">
+            <span class="current" id="nav-current">1</span> / <span id="nav-total">0</span>
+        </div>
+        <button class="nav-btn" id="btn-next">Next →</button>
+    </div>
+
+    <!-- Keyboard Hints -->
+    <div id="hints">
+        <div class="hint"><kbd>←</kbd> <kbd>→</kbd> Navigate</div>
+        <div class="hint"><kbd>Space</kbd> Toggle Image</div>
+        <div class="hint"><kbd>O</kbd> Orbit Mode</div>
+        <div class="hint"><kbd>C</kbd> Camera Markers</div>
+    </div>
+
+    <!-- Mode Overlay -->
+    <div id="mode-overlay">
+        <h2>🔄 Orbit Mode</h2>
+        <p>Drag to rotate • Scroll to zoom • Press <kbd>O</kbd> or <kbd>Esc</kbd> to exit</p>
+    </div>
+
+    <!-- Error Display -->
+    <div id="error">
+        <h3>⚠️ Error</h3>
+        <p id="error-message"></p>
+    </div>
+
+    <!-- Three.js Import Map -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        // ═══════════════════════════════════════════════════════════════
+        // IMPORTS
+        // ═══════════════════════════════════════════════════════════════
+        import * as THREE from 'three';
+        import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+        import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ═══════════════════════════════════════════════════════════════
+        // CONFIGURATION - MODIFY THESE FOR YOUR SETUP
+        // ═══════════════════════════════════════════════════════════════
+        const CONFIG = {
+            // ══════════════════════════════════════════════════════════
+
+            // ══════════════════════════════════════════════════════════
+            
+            // OPTION 1: Point Cloud (PLY) - dots, no solid surfaces
+            // pointCloudPath: 'data/room.ply',
+            // meshPath: null,
+            
+            // OPTION 2: Mesh (OBJ) - solid surfaces
+            // meshPath: 'data/room.obj',
+            // meshMtlPath: 'data/room.mtl',  // Optional: material file
+            // pointCloudPath: null,
+            
+            // OPTION 3: Mesh (GLB/GLTF) - solid surfaces with textures
+            // meshPath: 'data/room.glb',
+            // pointCloudPath: null,
+            
+            // OPTION 4: Both - show mesh with point cloud overlay
+            // meshPath: 'data/room.obj',
+            // pointCloudPath: 'data/room.ply',
+            
+            // ══════════════════════════════════════════════════════════
+            // CURRENT SETTING (edit this):
+            // ══════════════════════════════════════════════════════════
+            pointCloudPath: 'data/room.ply',
+            meshPath: 'data/model.obj',
+            meshMtlPath: 'data/model.mtl',
+
+            meshMtlPath: null, 
+            // Camera poses
+            camerasXmlPath: 'data/cameras.xml',
+            
+            // Images
+            imagesFolder: 'images/',
+            imageExtension: '.jpg',  // .jpg, .jpeg, .png, etc.
+            
+            // Point cloud appearance (only if using PLY)
+            defaultPointSize: 0.010,
+            pointSizeMin: 0.002,
+            pointSizeMax: 0.030,
+            
+            // Animation
+            defaultTransitionDuration: 1000, // milliseconds
+            
+            // Camera markers
+            markerSize: 0.06,
+            markerColor: 0x00ff88,
+            activeMarkerColor: 0xff4466,
+            
+            // Scene
+            backgroundColor: 0x111118,
+            fogNear: 20,
+            fogFar: 80,
+        };
+
+        // ═══════════════════════════════════════════════════════════════
+        // GLOBAL STATE
+        // ═══════════════════════════════════════════════════════════════
+        let scene, camera, renderer, controls;
+        let pointCloud = null;
+        let meshModel = null;
+        let cameraMarkers = [];
+        let camerasData = [];
+        
+        let currentCameraIndex = 0;
+        let isTransitioning = false;
+        let transitionDuration = CONFIG.defaultTransitionDuration;
+        
+        // View modes
+        let isOrbitMode = false;
+        let showImages = false;
+        let showMarkers = false;
+
+        // DOM Elements
+        const $ = id => document.getElementById(id);
+        const canvas = $('canvas');
+        const loadingEl = $('loading');
+        const loadingText = $('loading-text');
+        const loadingBar = $('loading-bar');
+        const errorEl = $('error');
+        const errorMsg = $('error-message');
+        const imgCurrent = $('image-current');
+        const imgNext = $('image-next');
+        const modeOverlay = $('mode-overlay');
+        const crosshair = $('crosshair');
+
+        // ═══════════════════════════════════════════════════════════════
+        // INITIALIZATION
+        // ═══════════════════════════════════════════════════════════════
+        async function init() {
+            try {
+                updateLoading('Setting up scene...', 5);
+                setupScene();
+                setupRenderer();
+                setupCamera();
+                setupOrbitControls();
+
+                updateLoading('Loading 3D model...', 10);
+                await loadModels();
+
+                updateLoading('Parsing camera data...', 80);
+                await loadCamerasFromXML();
+
+                updateLoading('Initializing controls...', 95);
+                setupUI();
+                setupKeyboardControls();
+
+                // Navigate to first camera
+                if (camerasData.length > 0) {
+                    goToCamera(0, false);
+                }
+
+                updateLoading('Ready!', 100);
+                setTimeout(() => loadingEl.classList.add('hidden'), 300);
+
+                // Start render loop
+                animate();
+
+                // Handle window resize
+                window.addEventListener('resize', onWindowResize);
+
+            } catch (error) {
+                showError(error.message);
+                console.error('Initialization error:', error);
+            }
+        }
+
+        function updateLoading(text, percent) {
+            loadingText.textContent = text;
+            loadingBar.style.width = `${percent}%`;
+        }
+
+        function showError(message) {
+            loadingEl.classList.add('hidden');
+            errorMsg.textContent = message;
+            errorEl.classList.add('visible');
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // SCENE SETUP
+        // ═══════════════════════════════════════════════════════════════
+        function setupScene() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(CONFIG.backgroundColor);
+            scene.fog = new THREE.Fog(CONFIG.backgroundColor, CONFIG.fogNear, CONFIG.fogFar);
+        }
+
+        function setupRenderer() {
+            renderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                antialias: true,
+                alpha: false
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+        }
+
+        function setupCamera() {
+            camera = new THREE.PerspectiveCamera(
+                60,  // FOV
+                window.innerWidth / window.innerHeight,  // Aspect
+                0.01,  // Near
+                500   // Far
+            );
+            camera.position.set(0, 1.6, 0);
+        }
+
+        function setupOrbitControls() {
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.08;
+            controls.screenSpacePanning = true;
+            controls.minDistance = 0.1;
+            controls.maxDistance = 100;
+            controls.maxPolarAngle = Math.PI * 0.95;
+            controls.enabled = false; // Disabled by default
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // MODEL LOADING (Point Cloud and/or Mesh)
+        // ═══════════════════════════════════════════════════════════════
+        async function loadModels() {
+            const promises = [];
+            
+            // Load mesh if specified
+            if (CONFIG.meshPath) {
+                promises.push(loadMesh());
+            }
+            
+            // Load point cloud if specified
+            if (CONFIG.pointCloudPath) {
+                promises.push(loadPointCloud());
+            }
+            
+            if (promises.length === 0) {
+                throw new Error('No model specified. Set meshPath or pointCloudPath in CONFIG.');
+            }
+            
+            await Promise.all(promises);
+            
+            // Add lighting for mesh
+            if (meshModel) {
+                addLighting();
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // MESH LOADING (OBJ / GLB / GLTF)
+        // ═══════════════════════════════════════════════════════════════
+        async function loadMesh() {
+            const path = CONFIG.meshPath;
+            const ext = path.split('.').pop().toLowerCase();
+            
+            if (ext === 'obj') {
+                return loadOBJ();
+            } else if (ext === 'glb' || ext === 'gltf') {
+                return loadGLTF();
+            } else {
+                throw new Error(`Unsupported mesh format: .${ext} (use .obj, .glb, or .gltf)`);
+            }
+        }
+
+async function loadOBJ() {
+            return new Promise((resolve, reject) => {
+                const loader = new OBJLoader();
+                
+                loader.load(
+                    CONFIG.meshPath,
+                    (obj) => {
+                        meshModel = obj;
+                        
+                        obj.traverse((child) => {
+                            if (child.isMesh) {
+                                // Use vertex colors if available
+                                child.material = new THREE.MeshBasicMaterial({
+                                    vertexColors: true,
+                                    side: THREE.DoubleSide
+                                });
+                            }
+                        });
+                        
+                        scene.add(meshModel);
+                        $('stat-points').textContent = 'Mesh loaded';
+                        console.log('✓ Loaded OBJ mesh with vertex colors');
+                        resolve();
+                    },
+                    (progress) => {
+                        if (progress.total > 0) {
+                            const pct = Math.round((progress.loaded / progress.total) * 40) + 10;
+                            updateLoading(`Loading mesh... ${Math.round(progress.loaded / progress.total * 100)}%`, pct);
+                        }
+                    },
+                    (error) => reject(new Error(`Failed to load OBJ: ${CONFIG.meshPath}`))
+                );
+            });
+        }
+        async function loadGLTF() {
+            return new Promise((resolve, reject) => {
+                const loader = new GLTFLoader();
+                
+                loader.load(
+                    CONFIG.meshPath,
+                    (gltf) => {
+                        meshModel = gltf.scene;
+                        scene.add(meshModel);
+                        
+                        $('stat-points').textContent = 'Mesh loaded';
+                        console.log('✓ Loaded GLTF/GLB mesh');
+                        resolve();
+                    },
+                    (progress) => {
+                        if (progress.total > 0) {
+                            const pct = Math.round((progress.loaded / progress.total) * 40) + 10;
+                            updateLoading(`Loading mesh... ${Math.round(progress.loaded / progress.total * 100)}%`, pct);
+                        }
+                    },
+                    (error) => reject(new Error(`Failed to load GLTF: ${CONFIG.meshPath}`))
+                );
+            });
+        }
+
+        function addLighting() {
+            // Ambient light
+            const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambient);
+            
+            // Main directional light
+            const mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            mainLight.position.set(10, 20, 10);
+            mainLight.castShadow = false;
+            scene.add(mainLight);
+            
+            // Fill light
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+            fillLight.position.set(-10, 10, -10);
+            scene.add(fillLight);
+            
+            // Hemisphere light for natural feel
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.4);
+            scene.add(hemiLight);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // POINT CLOUD LOADING
+        // ═══════════════════════════════════════════════════════════════
+        async function loadPointCloud() {
+            return new Promise((resolve, reject) => {
+                const loader = new PLYLoader();
+
+                loader.load(
+                    CONFIG.pointCloudPath,
+                    (geometry) => {
+                        geometry.computeVertexNormals();
+
+                        const hasColors = geometry.attributes.color !== undefined;
+                        
+                        const material = new THREE.PointsMaterial({
+                            size: CONFIG.defaultPointSize,
+                            vertexColors: hasColors,
+                            sizeAttenuation: true,
+                            transparent: false
+                        });
+
+                        pointCloud = new THREE.Points(geometry, material);
+                        scene.add(pointCloud);
+
+                        // Update stats
+                        const count = geometry.attributes.position.count;
+                        $('stat-points').textContent = count.toLocaleString();
+
+                        console.log(`✓ Loaded ${count.toLocaleString()} points`);
+                        resolve();
+                    },
+                    (progress) => {
+                        if (progress.total > 0) {
+                            const pct = Math.round((progress.loaded / progress.total) * 70) + 10;
+                            updateLoading(`Loading point cloud... ${Math.round(progress.loaded / progress.total * 100)}%`, pct);
+                        }
+                    },
+                    (error) => {
+                        reject(new Error(`Failed to load point cloud: ${CONFIG.pointCloudPath}`));
+                    }
+                );
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // METASHAPE XML CAMERA PARSING
+        // ═══════════════════════════════════════════════════════════════
+        async function loadCamerasFromXML() {
+            try {
+                const response = await fetch(CONFIG.camerasXmlPath);
+                if (!response.ok) {
+                    throw new Error(`Could not load camera data: ${CONFIG.camerasXmlPath}`);
+                }
+
+                const xmlText = await response.text();
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+
+                // Check for parse errors
+                if (xmlDoc.querySelector('parsererror')) {
+                    throw new Error('Invalid XML format in cameras file');
+                }
+
+                // Parse all camera elements
+                const cameraElements = xmlDoc.querySelectorAll('camera');
+                
+                cameraElements.forEach((camEl, index) => {
+                    const label = camEl.getAttribute('label') || `camera_${index}`;
+                    const transformEl = camEl.querySelector('transform');
+
+                    if (transformEl && transformEl.textContent) {
+                        const values = transformEl.textContent.trim().split(/\s+/).map(parseFloat);
+
+                        // Valid 4x4 (16 values) or 3x4 (12 values) matrix
+                        if (values.length >= 12 && !values.some(isNaN)) {
+                            let matrix = new THREE.Matrix4();
+
+                            if (values.length === 16) {
+                                // Row-major 4x4 matrix
+                                matrix.set(
+                                    values[0], values[1], values[2], values[3],
+                                    values[4], values[5], values[6], values[7],
+                                    values[8], values[9], values[10], values[11],
+                                    values[12], values[13], values[14], values[15]
+                                );
+                            } else {
+                                // 3x4 matrix - add homogeneous row
+                                matrix.set(
+                                    values[0], values[1], values[2], values[3],
+                                    values[4], values[5], values[6], values[7],
+                                    values[8], values[9], values[10], values[11],
+                                    0, 0, 0, 1
+                                );
+                            }
+
+                            // Decompose matrix into position, quaternion, scale
+                            const position = new THREE.Vector3();
+                            const quaternion = new THREE.Quaternion();
+                            const scale = new THREE.Vector3();
+                            matrix.decompose(position, quaternion, scale);
+
+                            // Build image path
+                            let imagePath = CONFIG.imagesFolder + label;
+                            if (!label.includes('.')) {
+                                imagePath += CONFIG.imageExtension;
+                            }
+
+                            camerasData.push({
+                                id: camerasData.length,
+                                label: label,
+                                position: position,
+                                quaternion: quaternion,
+                                matrix: matrix,
+                                imagePath: imagePath
+                            });
+                        }
+                    }
+                });
+
+                if (camerasData.length === 0) {
+                    throw new Error('No valid camera poses found in XML');
+                }
+
+                // Sort cameras by label for consistent ordering
+                camerasData.sort((a, b) => 
+                    a.label.localeCompare(b.label, undefined, { numeric: true })
+                );
+
+                // Re-index after sorting
+                camerasData.forEach((cam, i) => cam.id = i);
+
+                // Create visual markers for each camera
+                camerasData.forEach((cam, i) => createCameraMarker(cam, i));
+
+                // Update UI
+                $('stat-cameras').textContent = camerasData.length;
+                $('nav-total').textContent = camerasData.length;
+
+                console.log(`✓ Loaded ${camerasData.length} camera poses`);
+
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // CAMERA MARKERS
+        // ═══════════════════════════════════════════════════════════════
+        function createCameraMarker(camData, index) {
+            // Create a small pyramid to represent camera
+            const geometry = new THREE.ConeGeometry(
+                CONFIG.markerSize,
+                CONFIG.markerSize * 1.5,
+                4
+            );
+            geometry.rotateX(Math.PI / 2);
+
+            const material = new THREE.MeshBasicMaterial({
+                color: CONFIG.markerColor,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            const marker = new THREE.Mesh(geometry, material);
+            marker.position.copy(camData.position);
+            marker.quaternion.copy(camData.quaternion);
+            marker.visible = showMarkers;
+            marker.userData.cameraIndex = index;
+
+            scene.add(marker);
+            cameraMarkers.push(marker);
+        }
+
+        function updateCameraMarkers() {
+            cameraMarkers.forEach((marker, index) => {
+                const isActive = index === currentCameraIndex;
+                marker.material.color.setHex(
+                    isActive ? CONFIG.activeMarkerColor : CONFIG.markerColor
+                );
+                marker.material.opacity = isActive ? 1.0 : 0.6;
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // NAVIGATION WITH LERP & SLERP
+        // ═══════════════════════════════════════════════════════════════
+        function goToCamera(index, animate = true) {
+            // Bounds check
+            if (index < 0 || index >= camerasData.length) return;
+            
+            // Don't interrupt transitions
+            if (isTransitioning) return;
+            
+            // Don't navigate in orbit mode
+            if (isOrbitMode) return;
+
+            const targetCam = camerasData[index];
+            const targetPosition = targetCam.position.clone();
+            const targetQuaternion = targetCam.quaternion.clone();
+
+            // Calculate look-at target (point in front of camera)
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(targetQuaternion);
+            const targetLookAt = targetPosition.clone().add(forward.multiplyScalar(5));
+
+            if (animate && currentCameraIndex !== index) {
+                animateTransition(index, targetPosition, targetQuaternion, targetLookAt);
+            } else {
+                // Instant transition
+                camera.position.copy(targetPosition);
+                camera.quaternion.copy(targetQuaternion);
+                controls.target.copy(targetLookAt);
+                
+                currentCameraIndex = index;
+                updateUI();
+                updateCameraMarkers();
+                updateImageOverlay(index);
+            }
+        }
+
+        function animateTransition(targetIndex, targetPos, targetQuat, targetLookAt) {
+            isTransitioning = true;
+
+            // Store starting state
+            const startPos = camera.position.clone();
+            const startQuat = camera.quaternion.clone();
+            const startTarget = controls.target.clone();
+
+            // Prepare next image for cross-fade
+            if (showImages) {
+                const nextImagePath = camerasData[targetIndex].imagePath;
+                imgNext.style.backgroundImage = `url('${nextImagePath}')`;
+            }
+
+            const startTime = performance.now();
+
+            function update() {
+                const elapsed = performance.now() - startTime;
+                let t = Math.min(elapsed / transitionDuration, 1);
+
+                // Smooth ease-in-out curve (cubic)
+                t = t < 0.5
+                    ? 4 * t * t * t
+                    : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+                // ═══ LERP: Linear Interpolation for Position ═══
+                camera.position.lerpVectors(startPos, targetPos, t);
+
+                // ═══ SLERP: Spherical Linear Interpolation for Rotation ═══
+                camera.quaternion.slerpQuaternions(startQuat, targetQuat, t);
+
+                // LERP the orbit controls target
+                controls.target.lerpVectors(startTarget, targetLookAt, t);
+
+                // ═══ CSS CROSS-FADE for Images ═══
+                if (showImages) {
+                    imgCurrent.style.opacity = (1 - t) * 0.85;
+                    imgNext.style.opacity = t * 0.85;
+                }
+
+                if (t < 1) {
+                    requestAnimationFrame(update);
+                } else {
+                    // Transition complete
+                    currentCameraIndex = targetIndex;
+                    isTransitioning = false;
+
+                    // Finalize image swap
+                    if (showImages) {
+                        const finalPath = camerasData[targetIndex].imagePath;
+                        imgCurrent.style.backgroundImage = `url('${finalPath}')`;
+                        imgCurrent.style.opacity = 0.85;
+                        imgNext.style.opacity = 0;
+                    }
+
+                    updateUI();
+                    updateCameraMarkers();
+                }
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        function nextCamera() {
+            const next = (currentCameraIndex + 1) % camerasData.length;
+            goToCamera(next, true);
+        }
+
+        function prevCamera() {
+            const prev = (currentCameraIndex - 1 + camerasData.length) % camerasData.length;
+            goToCamera(prev, true);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // UI UPDATES
+        // ═══════════════════════════════════════════════════════════════
+        function updateUI() {
+            $('nav-current').textContent = currentCameraIndex + 1;
+            
+            if (camerasData[currentCameraIndex]) {
+                $('current-camera-name').textContent = camerasData[currentCameraIndex].label;
+            }
+        }
+
+        function updateImageOverlay(index) {
+            if (!camerasData[index]) return;
+            
+            const path = camerasData[index].imagePath;
+            imgCurrent.style.backgroundImage = `url('${path}')`;
+            imgCurrent.style.opacity = showImages ? 0.85 : 0;
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // TOGGLE FUNCTIONS
+        // ═══════════════════════════════════════════════════════════════
+        function toggleImages() {
+            showImages = !showImages;
+            $('btn-images').classList.toggle('active', showImages);
+            updateImageOverlay(currentCameraIndex);
+        }
+
+        function toggleMarkers() {
+            showMarkers = !showMarkers;
+            $('btn-markers').classList.toggle('active', showMarkers);
+            cameraMarkers.forEach(m => m.visible = showMarkers);
+        }
+
+        function toggleOrbitMode() {
+            isOrbitMode = !isOrbitMode;
+            controls.enabled = isOrbitMode;
+            
+            $('btn-orbit').classList.toggle('active', isOrbitMode);
+            $('btn-prev').disabled = isOrbitMode;
+            $('btn-next').disabled = isOrbitMode;
+            $('stat-mode').textContent = isOrbitMode ? 'Orbit' : 'Tour';
+            crosshair.classList.toggle('visible', isOrbitMode);
+            
+            // Show mode overlay briefly
+            modeOverlay.classList.toggle('visible', isOrbitMode);
+            if (isOrbitMode) {
+                setTimeout(() => modeOverlay.classList.remove('visible'), 2000);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // EVENT HANDLERS
+        // ═══════════════════════════════════════════════════════════════
+        function setupUI() {
+            // Navigation buttons
+            $('btn-prev').addEventListener('click', prevCamera);
+            $('btn-next').addEventListener('click', nextCamera);
+            
+            // Toggle buttons
+            $('btn-images').addEventListener('click', toggleImages);
+            $('btn-markers').addEventListener('click', toggleMarkers);
+            $('btn-orbit').addEventListener('click', toggleOrbitMode);
+            
+            // Point size slider
+            const pointSizeSlider = $('ctrl-point-size');
+            pointSizeSlider.addEventListener('input', (e) => {
+                const size = parseFloat(e.target.value);
+                $('val-point-size').textContent = size.toFixed(3);
+                if (pointCloud) {
+                    pointCloud.material.size = size;
+                }
+            });
+            
+            // Transition speed slider
+            const transitionSlider = $('ctrl-transition');
+            transitionSlider.addEventListener('input', (e) => {
+                const seconds = parseFloat(e.target.value);
+                transitionDuration = seconds * 1000;
+                $('val-transition').textContent = seconds.toFixed(1) + 's';
+            });
+        }
+
+        function setupKeyboardControls() {
+            document.addEventListener('keydown', (e) => {
+                // Prevent default for space
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                }
+                
+                switch (e.code) {
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        prevCamera();
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        nextCamera();
+                        break;
+                    case 'Space':
+                        toggleImages();
+                        break;
+                    case 'KeyO':
+                        toggleOrbitMode();
+                        break;
+                    case 'KeyC':
+                        toggleMarkers();
+                        break;
+                    case 'Escape':
+                        if (isOrbitMode) toggleOrbitMode();
+                        break;
+                }
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // RENDER LOOP
+        // ═══════════════════════════════════════════════════════════════
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update orbit controls if enabled
+            if (isOrbitMode) {
+                controls.update();
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // START APPLICATION
+        // ═══════════════════════════════════════════════════════════════
+        init();
+    </script>
+</body>
+</html>
